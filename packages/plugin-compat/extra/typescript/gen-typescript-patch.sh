@@ -17,14 +17,15 @@ HASHES=(
   "5d50de3" "426f5a7" "cda54b8" ">3.6 <3.7"
   "5d50de3" "2f85932" "e39bdc3" ">=3.7 <3.9"
   "5d50de3" "3af06df" "551f0dd" ">=3.9 <4.0"
-  "6dbdd2f" "6dbdd2f" "56865f7" ">=4.0 <4.1"
+  "675fab5" "675fab5" "56865f7" ">=4.0 <4.1"
   "746d79b" "746d79b" "69972a3" ">=4.1"
 )
 
 mkdir -p "$TEMP_DIR"
 if ! [[ -d "$TEMP_DIR"/clone ]]; then (
-    git clone https://github.com/arcanis/typescript "$TEMP_DIR"/clone
+    git clone https://github.com/andreialecu/TypeScript "$TEMP_DIR"/clone
     cd "$TEMP_DIR"/clone
+    git remote add arcanis https://github.com/arcanis/typescript
     git remote add upstream https://github.com/microsoft/typescript
 ); fi
 
@@ -38,6 +39,7 @@ git config user.name "Your Name"
 
 git fetch origin
 git fetch upstream
+git fetch arcanis
 
 reset-git() {
   git reset --hard "$1"
@@ -116,7 +118,7 @@ while [[ ${#HASHES[@]} -gt 0 ]]; do
   ORIG_DIR=$(build-dir-for "$CHERRYPICK_ONTO")
 
   make-build-for "$CHERRYPICK_ONTO" "$CHERRYPICK_FROM" "$CHERRYPICK_TO"
-  PATCHED_DIR=$(build-dir-for "$CHERRYPICK_ONTO" "$CHERRYPICK_FROM")
+  PATCHED_DIR=$(build-dir-for "$CHERRYPICK_ONTO" "$CHERRYPICK_TO")
 
   DIFF="$THIS_DIR"/patch."${HASH}"-on-"${BASE}".diff
 
