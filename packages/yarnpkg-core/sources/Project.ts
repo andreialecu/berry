@@ -2183,7 +2183,7 @@ function applyVirtualResolutionMutations({
       const virtualPackage = allPackages.get(resolution);
       if (!virtualPackage) continue;
 
-      if (structUtils.isVirtualLocator(virtualPackage)) {
+      if (structUtils.isVirtualLocator(virtualPackage) && project.tryWorkspaceByLocator(virtualPackage)) {
         packagesWithInstanceCount.set(virtualPackage.locatorHash, {
           virtualPackage,
           descriptor,
