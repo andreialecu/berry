@@ -56,13 +56,60 @@ const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
 
 export type InstallOptions = {
+  /**
+   * Instance of the cache that the project will use when packages have to be
+   * fetched. Some fetches may occur even during the resolution, for example
+   * when resolving git packages.
+   */
   cache: Cache,
+
+  /**
+   * An optional override for the default fetching pipeline. This is for
+   * overrides only - if you need to _add_ resolvers, prefer adding them
+   * through regular plugins instead.
+   */
   fetcher?: Fetcher,
+
+  /**
+   * An optional override for the default resolution pipeline. This is for
+   * overrides only - if you need to _add_ resolvers, prefer adding them
+   * through regular plugins instead.
+   */
   resolver?: Resolver
+
+  /**
+   * Provide a report instance that'll be use to store the information emitted
+   * during the install process.
+   */
   report: Report,
+
+  /**
+   * If true, Yarn will check that the lockfile won't change after the
+   * resolution step. Additionally, after the link step, Yarn will retrieve
+   * the list of files in `immutablePatterns` and check that they didn't get
+   * modified either.
+   */
   immutable?: boolean,
+
+  /**
+   * If true, Yarn will exclusively use the lockfile metadata. Setting this
+   * flag will cause it to ignore any change in the manifests, and to abort
+   * if any dependency isn't present in the lockfile.
+   */
   lockfileOnly?: boolean,
+
+  /**
+   * If true (the default), Yarn will update the workspace manifests once the
+   * install has completed.
+   */
   persistProject?: boolean,
+
+  /**
+   * If true, Yarn will skip the build step during the install. Contrary to
+   * setting the `enableScripts` setting to false, setting this won't cause
+   * the generated artifacts to change.
+   */
+  skipBuild?: boolean,
 };
 
 export class Project {
@@ -1040,7 +1087,7 @@ export class Project {
     }
   }
 
-  async linkEverything({cache, report, fetcher: optFetcher}: InstallOptions) {
+  async linkEverything({cache, report, fetcher: optFetcher, skipBuild}: InstallOptions) {
     const fetcher = optFetcher || this.configuration.makeFetcher();
     const fetcherOptions = {checksums: this.storedChecksums, project: this, cache, fetcher, report, skipIntegrityCheck: true};
 
@@ -1222,6 +1269,9 @@ export class Project {
     }
 
     // Step 4: Build the packages in multiple steps
+
+    if (skipBuild)
+      return;
 
     const readyPackages = new Set(this.storedPackages.keys());
     const buildablePackages = new Set(packageBuildDirectives.keys());
@@ -2123,7 +2173,7 @@ function applyVirtualResolutionMutations({
   };
 
   const devirtualizeSingleInstanceWorkspaces = () => {
-    const packagesWithInstanceCount = new Map<IdentHash, {virtualPackage: Package, descriptor: Descriptor, instanceCount: number}>();
+    const packagesWithInstanceCount = new Map<LocatorHash, {virtualPackage: Package, descriptor: Descriptor, instanceCount: number}>();
 
     // find any workspaces that only have one instance
     for (const descriptor of allDescriptors.values()) {
@@ -2134,10 +2184,10 @@ function applyVirtualResolutionMutations({
       if (!virtualPackage) continue;
 
       if (structUtils.isVirtualLocator(virtualPackage) && project.tryWorkspaceByLocator(virtualPackage)) {
-        packagesWithInstanceCount.set(virtualPackage.identHash, {
+        packagesWithInstanceCount.set(virtualPackage.locatorHash, {
           virtualPackage,
           descriptor,
-          instanceCount: (packagesWithInstanceCount.get(virtualPackage.identHash)?.instanceCount ?? 0) + 1,
+          instanceCount: (packagesWithInstanceCount.get(virtualPackage.locatorHash)?.instanceCount ?? 0) + 1,
         });
       }
     }
@@ -2149,7 +2199,8 @@ function applyVirtualResolutionMutations({
       const devirtualizedDescriptor = structUtils.devirtualizeDescriptor(descriptor);
 
       for (const {dependencies} of allPackages.values()) {
-        if (dependencies.has(descriptor.identHash)) {
+        const hasDependency = [...dependencies.values()].some(d => d.descriptorHash === descriptor.descriptorHash);
+        if (hasDependency) {
           dependencies.delete(descriptor.identHash);
           dependencies.set(devirtualizedDescriptor.identHash, devirtualizedDescriptor);
         }
