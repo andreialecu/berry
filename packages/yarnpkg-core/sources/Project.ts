@@ -2232,5 +2232,5 @@ function applyVirtualResolutionMutations({
     resolvePeerDependencies(workspace.anchoredLocator, true, false);
   }
 
-  devirtualizeSingleInstanceWorkspaces();
+  //devirtualizeSingleInstanceWorkspaces();
 }
