@@ -16,6 +16,7 @@ import {S_IFLNK, S_IFDIR, S_IFMT, S_IFREG}                                      
 import * as errors                                                                                                                                   from './errors';
 import {FSPath, PortablePath, npath, ppath, Filename}                                                                                                from './path';
 import * as statUtils                                                                                                                                from './statUtils';
+import { xfs } from '.';
 
 export type ZipCompression = `mixed` | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export const DEFAULT_COMPRESSION_LEVEL: ZipCompression = `mixed`;
@@ -152,7 +153,9 @@ export class ZipFS extends BasePortableFakeFS {
 
       if (typeof source === `string`) {
         this.zip = this.libzip.open(npath.fromPortablePath(source), flags, errPtr);
-        this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
+        if (xfs.existsSync(source)) {
+          this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
+        }
       } else {
         const lzSource = this.allocateUnattachedSource(source);
 
