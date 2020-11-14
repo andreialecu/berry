@@ -1,12 +1,14 @@
+import {CentralDirectory}                                                                                                                            from "@yarnpkg/libzipjs";
 import {Libzip}                                                                                                                                      from '@yarnpkg/libzip';
-import {ReadStream, Stats, WriteStream, constants}                                                                                                   from 'fs';
+import {ReadStream, Stats, WriteStream, constants, open, closeSync}                                                                                  from 'fs';
 import {PassThrough}                                                                                                                                 from 'stream';
 import {isDate}                                                                                                                                      from 'util';
+
 import zlib                                                                                                                                          from 'zlib';
 
-import {WatchOptions, WatchCallback, Watcher, Dir}                                                                                                   from './FakeFS';
-import {FakeFS, MkdirOptions, RmdirOptions, WriteFileOptions, OpendirOptions}                                                                        from './FakeFS';
 import {CreateReadStreamOptions, CreateWriteStreamOptions, BasePortableFakeFS, ExtractHintOptions, WatchFileCallback, WatchFileOptions, StatWatcher} from './FakeFS';
+import {FakeFS, MkdirOptions, RmdirOptions, WriteFileOptions, OpendirOptions}                                                                        from './FakeFS';
+import {WatchOptions, WatchCallback, Watcher, Dir}                                                                                                   from './FakeFS';
 import {NodeFS}                                                                                                                                      from './NodeFS';
 import {opendir}                                                                                                                                     from './algorithms/opendir';
 import {watchFile, unwatchFile, unwatchAllFiles}                                                                                                     from './algorithms/watchFile';
@@ -62,6 +64,8 @@ export class ZipFS extends BasePortableFakeFS {
 
   private readonly listings: Map<PortablePath, Set<Filename>> = new Map();
   private readonly entries: Map<PortablePath, number> = new Map();
+
+  private readonly centralDirectory: CentralDirectory | null = null;
 
   /**
    * A cache of indices mapped to file sources.
@@ -148,6 +152,7 @@ export class ZipFS extends BasePortableFakeFS {
 
       if (typeof source === `string`) {
         this.zip = this.libzip.open(npath.fromPortablePath(source), flags, errPtr);
+        this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
       } else {
         const lzSource = this.allocateUnattachedSource(source);
 
@@ -896,6 +901,32 @@ export class ZipFS extends BasePortableFakeFS {
     const cachedFileSource = this.fileSources.get(index);
     if (typeof cachedFileSource !== `undefined`)
       return cachedFileSource;
+
+    if (this.centralDirectory && this.path) {
+      const [path] = [...this.entries.entries()].find(([path, index]) => index === index) || [];
+      if (path) {
+        const entry = this.centralDirectory.entries.get(path);
+        if (entry) {
+          if (opts.asyncDecompress) {
+            return new Promise((resolve, reject) => {
+              open(this.path!, `r`, (err, fd) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  try {
+                    resolve(entry.inflate(fd));
+                  } catch (err) {
+                    reject(err);
+                  } finally {
+                    closeSync(fd);
+                  }
+                }
+              });
+            });
+          }
+        }
+      }
+    }
 
     const stat = this.libzip.struct.statS();
 

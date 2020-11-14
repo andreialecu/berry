@@ -159,6 +159,10 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
         "reference": "workspace:packages/yarnpkg-libzip"
       },
       {
+        "name": "@yarnpkg/libzipjs",
+        "reference": "workspace:packages/yarnpkg-libzipjs"
+      },
+      {
         "name": "@yarnpkg/parsers",
         "reference": "workspace:packages/yarnpkg-parsers"
       },
@@ -200,6 +204,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
       ["@yarnpkg/json-proxy", ["workspace:packages/yarnpkg-json-proxy"]],
       ["@yarnpkg/libui", ["virtual:a4e4e792796cefb4fb82f09187fa18bf4c97a9cb5b106da0eab6189e1895a4bb9bf068e5c91168fec85cee1392df48e4a120f3bae6cbbbde019ff2c21186a374#workspace:packages/yarnpkg-libui", "workspace:packages/yarnpkg-libui"]],
       ["@yarnpkg/libzip", ["workspace:packages/yarnpkg-libzip"]],
+      ["@yarnpkg/libzipjs", ["workspace:packages/yarnpkg-libzipjs"]],
       ["@yarnpkg/monorepo", ["workspace:."]],
       ["@yarnpkg/parsers", ["workspace:packages/yarnpkg-parsers"]],
       ["@yarnpkg/plugin-compat", ["virtual:4864d30fc563f2fd1b72a5e3869493c5f50bf38f98ed3886173d80c044d981c3f68220dbf17f2b5fc5b4c5fba7d0af2e003926efe3487086484049f41c449852#workspace:packages/plugin-compat", "virtual:cd2af72718007566941ac9f5a6def4d055c38029c95c3ac065493603e6055c1d77b2f2df752588114932973488b5a566f49b00118e7e12f48aa0798ea38cc15b#workspace:packages/plugin-compat", "workspace:packages/plugin-compat"]],
@@ -8974,6 +8979,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageDependencies": [
             ["@yarnpkg/fslib", "workspace:packages/yarnpkg-fslib"],
             ["@yarnpkg/libzip", "workspace:packages/yarnpkg-libzip"],
+            ["@yarnpkg/libzipjs", "workspace:packages/yarnpkg-libzipjs"],
             ["tslib", "npm:1.13.0"]
           ],
           "linkType": "SOFT",
@@ -9132,6 +9138,17 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["@types/emscripten", "npm:1.38.0"],
             ["@types/prettier", "npm:1.19.0"],
             ["prettier", "npm:1.19.1"],
+            ["tslib", "npm:1.13.0"]
+          ],
+          "linkType": "SOFT",
+        }]
+      ]],
+      ["@yarnpkg/libzipjs", [
+        ["workspace:packages/yarnpkg-libzipjs", {
+          "packageLocation": "./packages/yarnpkg-libzipjs/",
+          "packageDependencies": [
+            ["@yarnpkg/libzip", "workspace:packages/yarnpkg-libzip"],
+            ["@yarnpkg/libzipjs", "workspace:packages/yarnpkg-libzipjs"],
             ["tslib", "npm:1.13.0"]
           ],
           "linkType": "SOFT",
@@ -36666,7 +36683,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
 return /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 936:
+/***/ 352:
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
@@ -38222,14 +38239,521 @@ class VirtualFS extends ProxiedFS {
   }
 
 }
-// CONCATENATED MODULE: external "stream"
-const external_stream_namespaceObject = require("stream");;
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/constants.ts
+// https://github.com/antelle/node-stream-zip/blob/97d9f2a4fff3c66fbc53e6a92574592348454ce5/node_stream_zip.js#L212-L225
+const ZipConstants = {
+  /* The local file header */
+  LOCHDR: 30,
+  LOCSIG: 0x04034b50,
+  LOCVER: 4,
+  LOCFLG: 6,
+  LOCHOW: 8,
+  LOCTIM: 10,
+  LOCCRC: 14,
+  LOCSIZ: 18,
+  LOCLEN: 22,
+  LOCNAM: 26,
+  LOCEXT: 28,
+
+  /* The Data descriptor */
+  EXTSIG: 0x08074b50,
+  EXTHDR: 16,
+  EXTCRC: 4,
+  EXTSIZ: 8,
+  EXTLEN: 12,
+
+  /* The central directory file header */
+  CENHDR: 46,
+  CENSIG: 0x02014b50,
+  CENVEM: 4,
+  CENVER: 6,
+  CENFLG: 8,
+  CENHOW: 10,
+  CENTIM: 12,
+  CENCRC: 16,
+  CENSIZ: 20,
+  CENLEN: 24,
+  CENNAM: 28,
+  CENEXT: 30,
+  CENCOM: 32,
+  CENDSK: 34,
+  CENATT: 36,
+  CENATX: 38,
+  CENOFF: 42,
+
+  /* The entries in the end of central directory */
+  ENDHDR: 22,
+  ENDSIG: 0x06054b50,
+  ENDSIGFIRST: 0x50,
+  ENDSUB: 8,
+  ENDTOT: 10,
+  ENDSIZ: 12,
+  ENDOFF: 16,
+  ENDCOM: 20,
+  MAXFILECOMMENT: 0xffff,
+
+  /* The entries in the end of ZIP64 central directory locator */
+  ENDL64HDR: 20,
+  ENDL64SIG: 0x07064b50,
+  ENDL64SIGFIRST: 0x50,
+  ENDL64OFS: 8,
+
+  /* The entries in the end of ZIP64 central directory */
+  END64HDR: 56,
+  END64SIG: 0x06064b50,
+  END64SIGFIRST: 0x50,
+  END64SUB: 24,
+  END64TOT: 32,
+  END64SIZ: 40,
+  END64OFF: 48,
+
+  /* Compression methods */
+  STORED: 0,
+  SHRUNK: 1,
+  REDUCED1: 2,
+  REDUCED2: 3,
+  REDUCED3: 4,
+  REDUCED4: 5,
+  IMPLODED: 6,
+  // 7 reserved
+  DEFLATED: 8,
+  ENHANCED_DEFLATED: 9,
+  PKWARE: 10,
+  // 11 reserved
+  BZIP2: 12,
+  // 13 reserved
+  LZMA: 14,
+  // 15-17 reserved
+  IBM_TERSE: 18,
+  IBM_LZ77: 19,
+
+  /* General purpose bit flag */
+  FLG_ENC: 0,
+  FLG_COMP1: 1,
+  FLG_COMP2: 2,
+  FLG_DESC: 4,
+  FLG_ENH: 8,
+  FLG_STR: 16,
+  FLG_LNG: 1024,
+  FLG_MSK: 4096,
+  FLG_ENTRY_ENC: 1,
+
+  /* 4.5 Extensible data fields */
+  EF_ID: 0,
+  EF_SIZE: 2,
+
+  /* Header IDs */
+  ID_ZIP64: 0x0001,
+  ID_AVINFO: 0x0007,
+  ID_PFS: 0x0008,
+  ID_OS2: 0x0009,
+  ID_NTFS: 0x000a,
+  ID_OPENVMS: 0x000c,
+  ID_UNIX: 0x000d,
+  ID_FORK: 0x000e,
+  ID_PATCH: 0x000f,
+  ID_X509_PKCS7: 0x0014,
+  ID_X509_CERTID_F: 0x0015,
+  ID_X509_CERTID_C: 0x0016,
+  ID_STRONGENC: 0x0017,
+  ID_RECORD_MGT: 0x0018,
+  ID_X509_PKCS7_RL: 0x0019,
+  ID_IBM1: 0x0065,
+  ID_IBM2: 0x0066,
+  ID_POSZIP: 0x4690,
+  EF_ZIP64_OR_32: 0xffffffff,
+  EF_ZIP64_OR_16: 0xffff
+};
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/CentralDirectoryHeader.ts
+
+class CentralDirectoryHeader {
+  constructor() {
+    /** Number of entries on this volume */
+    this.volumeEntries = 0;
+    /** Total number of entries */
+
+    this.totalEntries = 0;
+    /** Central directory size in bytes */
+
+    this.size = 0;
+    /** Offset of first CEN header */
+
+    this.offset = 0;
+    /** Zip file comment length */
+
+    this.commentLength = 0;
+    /** Header starts here */
+
+    this.headerOffset = 0;
+  }
+
+  read(data) {
+    if (data.length != ZipConstants.ENDHDR || data.readUInt32LE(0) != ZipConstants.ENDSIG) throw new Error(`Invalid central directory`);
+    this.volumeEntries = data.readUInt16LE(ZipConstants.ENDSUB);
+    this.totalEntries = data.readUInt16LE(ZipConstants.ENDTOT);
+    this.size = data.readUInt32LE(ZipConstants.ENDSIZ);
+    this.offset = data.readUInt32LE(ZipConstants.ENDOFF);
+    this.commentLength = data.readUInt16LE(ZipConstants.ENDCOM);
+  }
+
+}
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/FileReader.ts
+
+class FileReader {
+  constructor(fd, buffer, offset, length, position) {
+    this.fd = fd;
+    this.buffer = buffer;
+    this.offset = offset;
+    this.length = length;
+    this.position = position;
+    this.totalBytesRead = 0;
+    this.lastBytesRead = 0;
+  }
+
+  readSync() {
+    this.lastBytesRead = external_fs_default().readSync(this.fd, this.buffer, this.offset + this.totalBytesRead, this.length - this.totalBytesRead, this.position + this.totalBytesRead);
+    this.totalBytesRead += this.lastBytesRead;
+    return this;
+  }
+
+}
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/FileWindowBuffer.ts
+
+class FileWindowBuffer {
+  constructor(fd) {
+    this.fd = fd;
+    this.position = 0;
+    this.buffer = Buffer.alloc(0);
+    this.fsOp = null;
+  }
+
+  readSync(pos, length) {
+    if (this.buffer.length < length) this.buffer = Buffer.alloc(length);
+    this.position = pos;
+    this.fsOp = new FileReader(this.fd, this.buffer, 0, length, this.position).readSync();
+    return this;
+  }
+
+  expandLeftSync(length) {
+    this.buffer = Buffer.concat([Buffer.alloc(length), this.buffer]);
+    this.position -= length;
+    if (this.position < 0) this.position = 0;
+    this.fsOp = new FileReader(this.fd, this.buffer, 0, length, this.position).readSync();
+    return this;
+  }
+
+}
 // CONCATENATED MODULE: external "util"
 const external_util_namespaceObject = require("util");;
 // CONCATENATED MODULE: external "zlib"
 const external_zlib_namespaceObject = require("zlib");;
 var external_zlib_default = /*#__PURE__*/__webpack_require__.n(external_zlib_namespaceObject);
 
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/ZipEntry.ts
+
+
+
+
+const readPromise = (0,external_util_namespaceObject.promisify)((external_fs_default()).read);
+const inflateRawPromise = (0,external_util_namespaceObject.promisify)((external_zlib_default()).inflateRaw);
+class ZipEntry {
+  readHeader(data, offset) {
+    // data should be 46 bytes and start with "PK 01 02"
+    if (data.length < offset + ZipConstants.CENHDR || data.readUInt32LE(offset) != ZipConstants.CENSIG) throw new Error(`Invalid entry header`);
+    this.verMade = data.readUInt16LE(offset + ZipConstants.CENVEM);
+    this.version = data.readUInt16LE(offset + ZipConstants.CENVER);
+    this.flags = data.readUInt16LE(offset + ZipConstants.CENFLG);
+    this.method = data.readUInt16LE(offset + ZipConstants.CENHOW); // modification time (2 bytes time, 2 bytes date)
+
+    var timebytes = data.readUInt16LE(offset + ZipConstants.CENTIM);
+    var datebytes = data.readUInt16LE(offset + ZipConstants.CENTIM + 2);
+    this.time = parseZipTime(timebytes, datebytes);
+    this.crc = data.readUInt32LE(offset + ZipConstants.CENCRC);
+    this.compressedSize = data.readUInt32LE(offset + ZipConstants.CENSIZ);
+    this.size = data.readUInt32LE(offset + ZipConstants.CENLEN);
+    this.fnameLen = data.readUInt16LE(offset + ZipConstants.CENNAM);
+    this.extraLen = data.readUInt16LE(offset + ZipConstants.CENEXT);
+    this.comLen = data.readUInt16LE(offset + ZipConstants.CENCOM);
+    this.diskStart = data.readUInt16LE(offset + ZipConstants.CENDSK);
+    this.inattr = data.readUInt16LE(offset + ZipConstants.CENATT);
+    this.attr = data.readUInt32LE(offset + ZipConstants.CENATX);
+    this.offset = data.readUInt32LE(offset + ZipConstants.CENOFF);
+  }
+
+  readDataHeader(data) {
+    // 30 bytes and should start with "PK\003\004"
+    if (data.readUInt32LE(0) != ZipConstants.LOCSIG) throw new Error(`Invalid local header`);
+    this.version = data.readUInt16LE(ZipConstants.LOCVER);
+    this.flags = data.readUInt16LE(ZipConstants.LOCFLG);
+    this.method = data.readUInt16LE(ZipConstants.LOCHOW);
+    var timebytes = data.readUInt16LE(ZipConstants.LOCTIM);
+    var datebytes = data.readUInt16LE(ZipConstants.LOCTIM + 2);
+    this.time = parseZipTime(timebytes, datebytes);
+    this.crc = data.readUInt32LE(ZipConstants.LOCCRC) || this.crc;
+    var compressedSize = data.readUInt32LE(ZipConstants.LOCSIZ);
+    if (compressedSize && compressedSize !== ZipConstants.EF_ZIP64_OR_32) this.compressedSize = compressedSize;
+    var size = data.readUInt32LE(ZipConstants.LOCLEN);
+    if (size && size !== ZipConstants.EF_ZIP64_OR_32) this.size = size;
+    this.fnameLen = data.readUInt16LE(ZipConstants.LOCNAM);
+    this.extraLen = data.readUInt16LE(ZipConstants.LOCEXT);
+  }
+
+  read(data, offset) {
+    this.name = data.slice(offset, offset += this.fnameLen).toString();
+    var lastChar = data[offset - 1];
+    this.isDirectory = lastChar == 47 || lastChar == 92;
+
+    if (this.extraLen) {
+      this.readExtra(data, offset);
+      offset += this.extraLen;
+    }
+
+    this.comment = this.comLen ? data.slice(offset, offset + this.comLen).toString() : null;
+  }
+
+  validateName() {
+    if (/\\|^\w+:|^\/|(^|\/)\.\.(\/|$)/.test(this.name)) {
+      throw new Error(`Malicious entry: ${this.name}`);
+    }
+  }
+
+  readExtra(data, offset) {
+    var signature,
+        size,
+        maxPos = offset + this.extraLen;
+
+    while (offset < maxPos) {
+      signature = data.readUInt16LE(offset);
+      offset += 2;
+      size = data.readUInt16LE(offset);
+      offset += 2;
+      if (ZipConstants.ID_ZIP64 === signature) this.parseZip64Extra(data, offset, size);
+      offset += size;
+    }
+  }
+
+  parseZip64Extra(data, offset, length) {
+    if (length >= 8 && this.size === ZipConstants.EF_ZIP64_OR_32) {
+      this.size = Number(data.readBigUInt64LE(offset));
+      offset += 8;
+      length -= 8;
+    }
+
+    if (length >= 8 && this.compressedSize === ZipConstants.EF_ZIP64_OR_32) {
+      this.compressedSize = Number(data.readBigUInt64LE(offset));
+      offset += 8;
+      length -= 8;
+    }
+
+    if (length >= 8 && this.offset === ZipConstants.EF_ZIP64_OR_32) {
+      this.offset = Number(data.readBigUInt64LE(offset));
+      offset += 8;
+      length -= 8;
+    }
+
+    if (length >= 4 && this.diskStart === ZipConstants.EF_ZIP64_OR_16) {
+      this.diskStart = data.readUInt32LE(offset); // not needed, because the function exits after this
+      // offset += 4; length -= 4;
+    }
+  }
+
+  get encrypted() {
+    return (this.flags & ZipConstants.FLG_ENTRY_ENC) == ZipConstants.FLG_ENTRY_ENC;
+  }
+
+  get isFile() {
+    return !this.isDirectory;
+  }
+  /**
+   * Decompresses the zip entry, from the given file descriptor
+   * @param zipFileDescriptor a file descriptor of the zip file
+   */
+
+
+  inflateSync(zipFileDescriptor) {
+    const data = Buffer.alloc(this.compressedSize);
+    external_fs_default().readSync(zipFileDescriptor, data, 0, this.compressedSize, this.offset + ZipConstants.LOCHDR + this.fnameLen + this.extraLen);
+    if (this.method === 0) return data;
+    return external_zlib_default().inflateRawSync(data);
+  }
+  /**
+   * Decompresses the zip entry, from the given file descriptor
+   * @param zipFileDescriptor a file descriptor of the zip file
+   */
+
+
+  async inflate(zipFileDescriptor) {
+    const data = Buffer.alloc(this.compressedSize);
+    await readPromise(zipFileDescriptor, data, 0, this.compressedSize, this.offset + ZipConstants.LOCHDR + this.fnameLen + this.extraLen);
+    if (this.method === 0) return data;
+    return inflateRawPromise(data);
+  }
+
+}
+
+function toBits(dec, size) {
+  var b = (dec >>> 0).toString(2).padStart(size, `0`);
+  return b.split(``);
+}
+
+function parseZipTime(timebytes, datebytes) {
+  var timebits = toBits(timebytes, 16);
+  var datebits = toBits(datebytes, 16);
+  var mt = {
+    h: parseInt(timebits.slice(0, 5).join(``), 2),
+    m: parseInt(timebits.slice(5, 11).join(``), 2),
+    s: parseInt(timebits.slice(11, 16).join(``), 2) * 2,
+    Y: parseInt(datebits.slice(0, 7).join(``), 2) + 1980,
+    M: parseInt(datebits.slice(7, 11).join(``), 2),
+    D: parseInt(datebits.slice(11, 16).join(``), 2)
+  };
+  return Date.UTC(mt.Y, mt.M - 1, mt.D, mt.h, mt.m, mt.s);
+}
+// CONCATENATED MODULE: ../yarnpkg-libzipjs/sources/CentralDirectory.ts
+
+
+
+
+
+
+function readUntilFound({
+  win,
+  lastPos,
+  minPos,
+  firstByte,
+  sig,
+  chunkSize = 1024
+}) {
+  var _a;
+
+  if (!((_a = win.fsOp) === null || _a === void 0 ? void 0 : _a.lastBytesRead)) throw new Error(`Archive read error`);
+  const buffer = win.buffer;
+  let pos = lastPos;
+  let bufferPosition = pos - win.position;
+
+  while (--pos >= minPos && --bufferPosition >= 0) {
+    if (buffer.length - bufferPosition >= 4 && buffer[bufferPosition] === firstByte) {
+      if (buffer.readUInt32LE(bufferPosition) === sig) {
+        return {
+          lastBufferPosition: bufferPosition,
+          lastBytesRead: win.fsOp.lastBytesRead
+        };
+      }
+    }
+  }
+
+  if (pos <= minPos) throw new Error(`Bad archive`);
+  const expandLength = Math.min(1024, pos - minPos);
+  return readUntilFound({
+    win: win.expandLeftSync(expandLength),
+    firstByte,
+    sig,
+    minPos,
+    lastPos: lastPos + 1,
+    chunkSize: chunkSize * 2
+  });
+}
+
+class CentralDirectory {
+  constructor(fileName, chunkSize) {
+    this.entriesCount = 0;
+    this.entries = new Map();
+    this.fd = external_fs_default().openSync(fileName, `r`);
+    const stat = external_fs_default().fstatSync(this.fd);
+    this.fileSize = stat.size;
+    this.chunkSize = chunkSize || Math.round(this.fileSize / 1000);
+    this.chunkSize = Math.max(Math.min(this.chunkSize, Math.min(128 * 1024, this.fileSize)), Math.min(1024, this.fileSize));
+    this.readCentralDirectory();
+    external_fs_default().closeSync(this.fd);
+  }
+
+  readEntries(header) {
+    const win = new FileWindowBuffer(this.fd);
+    win.readSync(header.offset, Math.min(this.chunkSize, this.fileSize - header.offset));
+    this.processEntries({
+      win,
+      pos: header.offset,
+      entriesLeft: header.volumeEntries
+    });
+  }
+
+  processEntries({
+    win,
+    pos,
+    entriesLeft
+  }) {
+    var _a;
+
+    if (!((_a = win.fsOp) === null || _a === void 0 ? void 0 : _a.lastBytesRead)) throw new Error(`Entries read error`);
+    const buffer = win.buffer;
+    let bufferPos = pos - win.position;
+    const bufferLength = buffer.length;
+
+    while (entriesLeft > 0) {
+      const entry = new ZipEntry();
+      entry.readHeader(buffer, bufferPos);
+      entry.headerOffset = win.position + bufferPos;
+      pos += ZipConstants.CENHDR;
+      bufferPos += ZipConstants.CENHDR;
+      const entryHeaderSize = entry.fnameLen + entry.extraLen + entry.comLen;
+      const advanceBytes = entryHeaderSize + (entriesLeft > 1 ? ZipConstants.CENHDR : 0);
+
+      if (bufferLength - bufferPos < advanceBytes) {
+        // we'd overrun the buffer, read again
+        pos -= ZipConstants.CENHDR;
+        win.readSync(pos, this.chunkSize);
+        return this.processEntries({
+          win,
+          pos,
+          entriesLeft
+        });
+      }
+
+      entry.read(buffer, bufferPos);
+      entry.validateName();
+      this.entries.set(entry.name, entry);
+      entriesLeft--;
+      pos += entryHeaderSize;
+      bufferPos += entryHeaderSize;
+    }
+
+    return void 0;
+  }
+
+  readCentralDirectory() {
+    const totalReadLength = Math.min(ZipConstants.ENDHDR + ZipConstants.MAXFILECOMMENT, this.fileSize);
+    const chunkSize = Math.min(1024, this.chunkSize);
+    const win = new FileWindowBuffer(this.fd);
+    win.readSync(this.fileSize - chunkSize, chunkSize);
+    const {
+      lastBufferPosition
+    } = readUntilFound({
+      win,
+      lastPos: this.fileSize,
+      minPos: this.fileSize - totalReadLength,
+      firstByte: ZipConstants.ENDSIGFIRST,
+      sig: ZipConstants.ENDSIG
+    });
+    const buffer = win.buffer;
+    const centralDirectory = new CentralDirectoryHeader();
+    centralDirectory.read(buffer.slice(lastBufferPosition, lastBufferPosition + ZipConstants.ENDHDR));
+    centralDirectory.headerOffset = win.position + lastBufferPosition;
+
+    if (centralDirectory.commentLength) {
+      this.comment = buffer.slice(lastBufferPosition + ZipConstants.ENDHDR, lastBufferPosition + ZipConstants.ENDHDR + centralDirectory.commentLength).toString();
+    }
+
+    this.entriesCount = centralDirectory.volumeEntries;
+
+    if (centralDirectory.volumeEntries === ZipConstants.EF_ZIP64_OR_16 && centralDirectory.totalEntries === ZipConstants.EF_ZIP64_OR_16 || centralDirectory.size === ZipConstants.EF_ZIP64_OR_32 || centralDirectory.offset === ZipConstants.EF_ZIP64_OR_32) {// read 64
+    } else {
+      this.readEntries(centralDirectory);
+    }
+  }
+
+}
+// CONCATENATED MODULE: external "stream"
+const external_stream_namespaceObject = require("stream");;
 // CONCATENATED MODULE: ../yarnpkg-fslib/sources/algorithms/opendir.ts
 
 class CustomDir {
@@ -38663,6 +39187,7 @@ function unwatchAllFiles(fakeFs) {
 
 
 
+
 const DEFAULT_COMPRESSION_LEVEL = `mixed`;
 
 function toUnixTimestamp(time) {
@@ -38687,6 +39212,7 @@ class ZipFS extends BasePortableFakeFS {
     this.lzSource = null;
     this.listings = new Map();
     this.entries = new Map();
+    this.centralDirectory = null;
     /**
      * A cache of indices mapped to file sources.
      * Populated by `setFileSource` calls.
@@ -38748,6 +39274,7 @@ class ZipFS extends BasePortableFakeFS {
 
       if (typeof source === `string`) {
         this.zip = this.libzip.open(npath.fromPortablePath(source), flags, errPtr);
+        this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
       } else {
         const lzSource = this.allocateUnattachedSource(source);
 
@@ -39374,6 +39901,35 @@ class ZipFS extends BasePortableFakeFS {
   }) {
     const cachedFileSource = this.fileSources.get(index);
     if (typeof cachedFileSource !== `undefined`) return cachedFileSource;
+
+    if (this.centralDirectory && this.path) {
+      const [path] = [...this.entries.entries()].find(([path, index]) => index === index) || [];
+
+      if (path) {
+        const entry = this.centralDirectory.entries.get(path);
+
+        if (entry) {
+          if (opts.asyncDecompress) {
+            return new Promise((resolve, reject) => {
+              (0,external_fs_.open)(this.path, `r`, (err, fd) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  try {
+                    resolve(entry.inflate(fd));
+                  } catch (err) {
+                    reject(err);
+                  } finally {
+                    (0,external_fs_.closeSync)(fd);
+                  }
+                }
+              });
+            });
+          }
+        }
+      }
+    }
+
     const stat = this.libzip.struct.statS();
     const rc = this.libzip.statIndex(this.zip, index, 0, 0, stat);
     if (rc === -1) throw this.makeLibzipError(this.libzip.getError(this.zip));
@@ -47252,7 +47808,7 @@ module.exports = require("path");;
 /******/ 	// module exports must be returned from runtime so entry inlining is disabled
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(936);
+/******/ 	return __webpack_require__(352);
 /******/ })()
 .default;
 });
