@@ -1,6 +1,6 @@
 import {CentralDirectory}                                                                                                                            from "@yarnpkg/libzipjs";
 import {Libzip}                                                                                                                                      from '@yarnpkg/libzip';
-import {ReadStream, Stats, WriteStream, constants, open, closeSync}                                                                                  from 'fs';
+import {ReadStream, Stats, WriteStream, constants, open, closeSync, openSync}                                                                                  from 'fs';
 import {PassThrough}                                                                                                                                 from 'stream';
 import {isDate}                                                                                                                                      from 'util';
 
@@ -906,9 +906,9 @@ export class ZipFS extends BasePortableFakeFS {
       return cachedFileSource;
 
     if (this.centralDirectory && this.path) {
-      const [path] = [...this.entries.entries()].find(([path, index]) => index === index) || [];
+      const [path] = [...this.entries.entries()].find(([path, mindex]) => mindex === index) || [];
       if (path) {
-        const entry = this.centralDirectory.entries.get(path);
+        const entry = this.centralDirectory.entries.get(path.slice(1));
         if (entry) {
           if (opts.asyncDecompress) {
             return new Promise((resolve, reject) => {
@@ -926,6 +926,13 @@ export class ZipFS extends BasePortableFakeFS {
                 }
               });
             });
+          } else {
+            let fd = openSync(this.path, "r");
+            try {
+              return entry.inflateSync(fd);
+            } finally {
+              closeSync(fd);
+            }
           }
         }
       }

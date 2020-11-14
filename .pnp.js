@@ -39174,7 +39174,297 @@ function unwatchAllFiles(fakeFs) {
     unwatchFile(fakeFs, path);
   }
 }
+// CONCATENATED MODULE: ../yarnpkg-fslib/sources/index.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function getTempName(prefix) {
+  const tmpdir = npath.toPortablePath(external_os_default().tmpdir());
+  const hash = Math.ceil(Math.random() * 0x100000000).toString(16).padStart(8, `0`);
+  return ppath.join(tmpdir, `${prefix}${hash}`);
+}
+
+function patchFs(patchedFs, fakeFs) {
+  const SYNC_IMPLEMENTATIONS = new Set([`accessSync`, `appendFileSync`, `createReadStream`, `chmodSync`, `chownSync`, `closeSync`, `copyFileSync`, `linkSync`, `lstatSync`, `lutimesSync`, `mkdirSync`, `openSync`, `opendirSync`, `readSync`, `readlinkSync`, `readFileSync`, `readdirSync`, `readlinkSync`, `realpathSync`, `renameSync`, `rmdirSync`, `statSync`, `symlinkSync`, `truncateSync`, `unlinkSync`, `unwatchFile`, `utimesSync`, `watch`, `watchFile`, `writeFileSync`, `writeSync`]);
+  const ASYNC_IMPLEMENTATIONS = new Set([`accessPromise`, `appendFilePromise`, `chmodPromise`, `chownPromise`, `closePromise`, `copyFilePromise`, `linkPromise`, `lstatPromise`, `lutimesPromise`, `mkdirPromise`, `openPromise`, `opendirPromise`, `readdirPromise`, `realpathPromise`, `readFilePromise`, `readdirPromise`, `readlinkPromise`, `renamePromise`, `rmdirPromise`, `statPromise`, `symlinkPromise`, `truncatePromise`, `unlinkPromise`, `utimesPromise`, `writeFilePromise`, `writeSync`]);
+  const FILEHANDLE_IMPLEMENTATIONS = new Set([`appendFilePromise`, `chmodPromise`, `chownPromise`, `closePromise`, `readPromise`, `readFilePromise`, `statPromise`, `truncatePromise`, `utimesPromise`, `writePromise`, `writeFilePromise`]);
+
+  const setupFn = (target, name, replacement) => {
+    const orig = target[name];
+    target[name] = replacement;
+
+    if (typeof (orig === null || orig === void 0 ? void 0 : orig[external_util_namespaceObject.promisify.custom]) !== `undefined`) {
+      replacement[external_util_namespaceObject.promisify.custom] = orig[external_util_namespaceObject.promisify.custom];
+    }
+  };
+  /** Callback implementations */
+
+
+  {
+    setupFn(patchedFs, `exists`, (p, ...args) => {
+      const hasCallback = typeof args[args.length - 1] === `function`;
+      const callback = hasCallback ? args.pop() : () => {};
+      process.nextTick(() => {
+        fakeFs.existsPromise(p).then(exists => {
+          callback(exists);
+        }, () => {
+          callback(false);
+        });
+      });
+    });
+    setupFn(patchedFs, `read`, (p, buffer, ...args) => {
+      const hasCallback = typeof args[args.length - 1] === `function`;
+      const callback = hasCallback ? args.pop() : () => {};
+      process.nextTick(() => {
+        fakeFs.readPromise(p, buffer, ...args).then(bytesRead => {
+          callback(null, bytesRead, buffer);
+        }, error => {
+          callback(error);
+        });
+      });
+    });
+
+    for (const fnName of ASYNC_IMPLEMENTATIONS) {
+      const origName = fnName.replace(/Promise$/, ``);
+      if (typeof patchedFs[origName] === `undefined`) continue;
+      const fakeImpl = fakeFs[fnName];
+      if (typeof fakeImpl === `undefined`) continue;
+
+      const wrapper = (...args) => {
+        const hasCallback = typeof args[args.length - 1] === `function`;
+        const callback = hasCallback ? args.pop() : () => {};
+        process.nextTick(() => {
+          fakeImpl.apply(fakeFs, args).then(result => {
+            callback(null, result);
+          }, error => {
+            callback(error);
+          });
+        });
+      };
+
+      setupFn(patchedFs, origName, wrapper);
+    }
+
+    patchedFs.realpath.native = patchedFs.realpath;
+  }
+  /** Sync implementations */
+
+  {
+    setupFn(patchedFs, `existsSync`, p => {
+      try {
+        return fakeFs.existsSync(p);
+      } catch (error) {
+        return false;
+      }
+    });
+
+    for (const fnName of SYNC_IMPLEMENTATIONS) {
+      const origName = fnName;
+      if (typeof patchedFs[origName] === `undefined`) continue;
+      const fakeImpl = fakeFs[fnName];
+      if (typeof fakeImpl === `undefined`) continue;
+      setupFn(patchedFs, origName, fakeImpl.bind(fakeFs));
+    }
+
+    patchedFs.realpathSync.native = patchedFs.realpathSync;
+  }
+  /** Promise implementations */
+
+  {
+    // `fs.promises` is a getter that returns a reference to require(`fs/promises`),
+    // so we can just patch `fs.promises` and both will be updated
+    const origEmitWarning = process.emitWarning;
+
+    process.emitWarning = () => {};
+
+    let patchedFsPromises;
+
+    try {
+      patchedFsPromises = patchedFs.promises;
+    } finally {
+      process.emitWarning = origEmitWarning;
+    }
+
+    if (typeof patchedFsPromises !== `undefined`) {
+      // `fs.promises.exists` doesn't exist
+      for (const fnName of ASYNC_IMPLEMENTATIONS) {
+        const origName = fnName.replace(/Promise$/, ``);
+        if (typeof patchedFsPromises[origName] === `undefined`) continue;
+        const fakeImpl = fakeFs[fnName];
+        if (typeof fakeImpl === `undefined`) continue; // Open is a bit particular with fs.promises: it returns a file handle
+        // instance instead of the traditional file descriptor number
+
+        if (fnName === `open`) continue;
+        setupFn(patchedFsPromises, origName, fakeImpl.bind(fakeFs));
+      }
+
+      class FileHandle {
+        constructor(fd) {
+          this.fd = fd;
+        }
+
+      }
+
+      for (const fnName of FILEHANDLE_IMPLEMENTATIONS) {
+        const origName = fnName.replace(/Promise$/, ``);
+        const fakeImpl = fakeFs[fnName];
+        if (typeof fakeImpl === `undefined`) continue;
+        setupFn(FileHandle.prototype, origName, function (...args) {
+          return fakeImpl.call(fakeFs, this.fd, ...args);
+        });
+      }
+
+      setupFn(patchedFsPromises, `open`, async (...args) => {
+        // @ts-expect-error
+        const fd = await fakeFs.openPromise(...args);
+        return new FileHandle(fd);
+      }); // `fs.promises.realpath` doesn't have a `native` property
+    }
+  }
+}
+function extendFs(realFs, fakeFs) {
+  const patchedFs = Object.create(realFs);
+  patchFs(patchedFs, fakeFs);
+  return patchedFs;
+}
+const tmpdirs = new Set();
+let cleanExitRegistered = false;
+
+function registerCleanExit() {
+  if (cleanExitRegistered) return;
+  cleanExitRegistered = true;
+  process.once(`exit`, () => {
+    xfs.rmtempSync();
+  });
+}
+
+const xfs = Object.assign(new NodeFS(), {
+  detachTemp(p) {
+    tmpdirs.delete(p);
+  },
+
+  mktempSync(cb) {
+    registerCleanExit();
+
+    while (true) {
+      const p = getTempName(`xfs-`);
+
+      try {
+        this.mkdirSync(p);
+      } catch (error) {
+        if (error.code === `EEXIST`) {
+          continue;
+        } else {
+          throw error;
+        }
+      }
+
+      const realP = this.realpathSync(p);
+      tmpdirs.add(realP);
+
+      if (typeof cb !== `undefined`) {
+        try {
+          return cb(realP);
+        } finally {
+          if (tmpdirs.has(realP)) {
+            tmpdirs.delete(realP);
+
+            try {
+              this.removeSync(realP);
+            } catch (_a) {// Too bad if there's an error
+            }
+          }
+        }
+      } else {
+        return p;
+      }
+    }
+  },
+
+  async mktempPromise(cb) {
+    registerCleanExit();
+
+    while (true) {
+      const p = getTempName(`xfs-`);
+
+      try {
+        await this.mkdirPromise(p);
+      } catch (error) {
+        if (error.code === `EEXIST`) {
+          continue;
+        } else {
+          throw error;
+        }
+      }
+
+      const realP = await this.realpathPromise(p);
+      tmpdirs.add(realP);
+
+      if (typeof cb !== `undefined`) {
+        try {
+          return await cb(realP);
+        } finally {
+          if (tmpdirs.has(realP)) {
+            tmpdirs.delete(realP);
+
+            try {
+              await this.removePromise(realP);
+            } catch (_a) {// Too bad if there's an error
+            }
+          }
+        }
+      } else {
+        return realP;
+      }
+    }
+  },
+
+  async rmtempPromise() {
+    await Promise.all(Array.from(tmpdirs.values()).map(async p => {
+      try {
+        await xfs.removePromise(p, {
+          maxRetries: 0
+        });
+        tmpdirs.delete(p);
+      } catch (_a) {// Too bad if there's an error
+      }
+    }));
+  },
+
+  rmtempSync() {
+    for (const p of tmpdirs) {
+      try {
+        xfs.removeSync(p);
+        tmpdirs.delete(p);
+      } catch (_a) {// Too bad if there's an error
+      }
+    }
+  }
+
+});
 // CONCATENATED MODULE: ../yarnpkg-fslib/sources/ZipFS.ts
+
 
 
 
@@ -39274,7 +39564,10 @@ class ZipFS extends BasePortableFakeFS {
 
       if (typeof source === `string`) {
         this.zip = this.libzip.open(npath.fromPortablePath(source), flags, errPtr);
-        this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
+
+        if (xfs.existsSync(source)) {
+          this.centralDirectory = new CentralDirectory(npath.fromPortablePath(source));
+        }
       } else {
         const lzSource = this.allocateUnattachedSource(source);
 
@@ -39903,10 +40196,10 @@ class ZipFS extends BasePortableFakeFS {
     if (typeof cachedFileSource !== `undefined`) return cachedFileSource;
 
     if (this.centralDirectory && this.path) {
-      const [path] = [...this.entries.entries()].find(([path, index]) => index === index) || [];
+      const [path] = [...this.entries.entries()].find(([path, mindex]) => mindex === index) || [];
 
       if (path) {
-        const entry = this.centralDirectory.entries.get(path);
+        const entry = this.centralDirectory.entries.get(path.slice(1));
 
         if (entry) {
           if (opts.asyncDecompress) {
@@ -39925,6 +40218,14 @@ class ZipFS extends BasePortableFakeFS {
                 }
               });
             });
+          } else {
+            let fd = (0,external_fs_.openSync)(this.path, "r");
+
+            try {
+              return entry.inflateSync(fd);
+            } finally {
+              (0,external_fs_.closeSync)(fd);
+            }
           }
         }
       }
@@ -41596,295 +41897,6 @@ var external_module_default = /*#__PURE__*/__webpack_require__.n(external_module
 const external_string_decoder_namespaceObject = require("string_decoder");;
 var external_string_decoder_default = /*#__PURE__*/__webpack_require__.n(external_string_decoder_namespaceObject);
 
-// CONCATENATED MODULE: ../yarnpkg-fslib/sources/index.ts
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function getTempName(prefix) {
-  const tmpdir = npath.toPortablePath(external_os_default().tmpdir());
-  const hash = Math.ceil(Math.random() * 0x100000000).toString(16).padStart(8, `0`);
-  return ppath.join(tmpdir, `${prefix}${hash}`);
-}
-
-function patchFs(patchedFs, fakeFs) {
-  const SYNC_IMPLEMENTATIONS = new Set([`accessSync`, `appendFileSync`, `createReadStream`, `chmodSync`, `chownSync`, `closeSync`, `copyFileSync`, `linkSync`, `lstatSync`, `lutimesSync`, `mkdirSync`, `openSync`, `opendirSync`, `readSync`, `readlinkSync`, `readFileSync`, `readdirSync`, `readlinkSync`, `realpathSync`, `renameSync`, `rmdirSync`, `statSync`, `symlinkSync`, `truncateSync`, `unlinkSync`, `unwatchFile`, `utimesSync`, `watch`, `watchFile`, `writeFileSync`, `writeSync`]);
-  const ASYNC_IMPLEMENTATIONS = new Set([`accessPromise`, `appendFilePromise`, `chmodPromise`, `chownPromise`, `closePromise`, `copyFilePromise`, `linkPromise`, `lstatPromise`, `lutimesPromise`, `mkdirPromise`, `openPromise`, `opendirPromise`, `readdirPromise`, `realpathPromise`, `readFilePromise`, `readdirPromise`, `readlinkPromise`, `renamePromise`, `rmdirPromise`, `statPromise`, `symlinkPromise`, `truncatePromise`, `unlinkPromise`, `utimesPromise`, `writeFilePromise`, `writeSync`]);
-  const FILEHANDLE_IMPLEMENTATIONS = new Set([`appendFilePromise`, `chmodPromise`, `chownPromise`, `closePromise`, `readPromise`, `readFilePromise`, `statPromise`, `truncatePromise`, `utimesPromise`, `writePromise`, `writeFilePromise`]);
-
-  const setupFn = (target, name, replacement) => {
-    const orig = target[name];
-    target[name] = replacement;
-
-    if (typeof (orig === null || orig === void 0 ? void 0 : orig[external_util_namespaceObject.promisify.custom]) !== `undefined`) {
-      replacement[external_util_namespaceObject.promisify.custom] = orig[external_util_namespaceObject.promisify.custom];
-    }
-  };
-  /** Callback implementations */
-
-
-  {
-    setupFn(patchedFs, `exists`, (p, ...args) => {
-      const hasCallback = typeof args[args.length - 1] === `function`;
-      const callback = hasCallback ? args.pop() : () => {};
-      process.nextTick(() => {
-        fakeFs.existsPromise(p).then(exists => {
-          callback(exists);
-        }, () => {
-          callback(false);
-        });
-      });
-    });
-    setupFn(patchedFs, `read`, (p, buffer, ...args) => {
-      const hasCallback = typeof args[args.length - 1] === `function`;
-      const callback = hasCallback ? args.pop() : () => {};
-      process.nextTick(() => {
-        fakeFs.readPromise(p, buffer, ...args).then(bytesRead => {
-          callback(null, bytesRead, buffer);
-        }, error => {
-          callback(error);
-        });
-      });
-    });
-
-    for (const fnName of ASYNC_IMPLEMENTATIONS) {
-      const origName = fnName.replace(/Promise$/, ``);
-      if (typeof patchedFs[origName] === `undefined`) continue;
-      const fakeImpl = fakeFs[fnName];
-      if (typeof fakeImpl === `undefined`) continue;
-
-      const wrapper = (...args) => {
-        const hasCallback = typeof args[args.length - 1] === `function`;
-        const callback = hasCallback ? args.pop() : () => {};
-        process.nextTick(() => {
-          fakeImpl.apply(fakeFs, args).then(result => {
-            callback(null, result);
-          }, error => {
-            callback(error);
-          });
-        });
-      };
-
-      setupFn(patchedFs, origName, wrapper);
-    }
-
-    patchedFs.realpath.native = patchedFs.realpath;
-  }
-  /** Sync implementations */
-
-  {
-    setupFn(patchedFs, `existsSync`, p => {
-      try {
-        return fakeFs.existsSync(p);
-      } catch (error) {
-        return false;
-      }
-    });
-
-    for (const fnName of SYNC_IMPLEMENTATIONS) {
-      const origName = fnName;
-      if (typeof patchedFs[origName] === `undefined`) continue;
-      const fakeImpl = fakeFs[fnName];
-      if (typeof fakeImpl === `undefined`) continue;
-      setupFn(patchedFs, origName, fakeImpl.bind(fakeFs));
-    }
-
-    patchedFs.realpathSync.native = patchedFs.realpathSync;
-  }
-  /** Promise implementations */
-
-  {
-    // `fs.promises` is a getter that returns a reference to require(`fs/promises`),
-    // so we can just patch `fs.promises` and both will be updated
-    const origEmitWarning = process.emitWarning;
-
-    process.emitWarning = () => {};
-
-    let patchedFsPromises;
-
-    try {
-      patchedFsPromises = patchedFs.promises;
-    } finally {
-      process.emitWarning = origEmitWarning;
-    }
-
-    if (typeof patchedFsPromises !== `undefined`) {
-      // `fs.promises.exists` doesn't exist
-      for (const fnName of ASYNC_IMPLEMENTATIONS) {
-        const origName = fnName.replace(/Promise$/, ``);
-        if (typeof patchedFsPromises[origName] === `undefined`) continue;
-        const fakeImpl = fakeFs[fnName];
-        if (typeof fakeImpl === `undefined`) continue; // Open is a bit particular with fs.promises: it returns a file handle
-        // instance instead of the traditional file descriptor number
-
-        if (fnName === `open`) continue;
-        setupFn(patchedFsPromises, origName, fakeImpl.bind(fakeFs));
-      }
-
-      class FileHandle {
-        constructor(fd) {
-          this.fd = fd;
-        }
-
-      }
-
-      for (const fnName of FILEHANDLE_IMPLEMENTATIONS) {
-        const origName = fnName.replace(/Promise$/, ``);
-        const fakeImpl = fakeFs[fnName];
-        if (typeof fakeImpl === `undefined`) continue;
-        setupFn(FileHandle.prototype, origName, function (...args) {
-          return fakeImpl.call(fakeFs, this.fd, ...args);
-        });
-      }
-
-      setupFn(patchedFsPromises, `open`, async (...args) => {
-        // @ts-expect-error
-        const fd = await fakeFs.openPromise(...args);
-        return new FileHandle(fd);
-      }); // `fs.promises.realpath` doesn't have a `native` property
-    }
-  }
-}
-function extendFs(realFs, fakeFs) {
-  const patchedFs = Object.create(realFs);
-  patchFs(patchedFs, fakeFs);
-  return patchedFs;
-}
-const tmpdirs = new Set();
-let cleanExitRegistered = false;
-
-function registerCleanExit() {
-  if (cleanExitRegistered) return;
-  cleanExitRegistered = true;
-  process.once(`exit`, () => {
-    xfs.rmtempSync();
-  });
-}
-
-const xfs = Object.assign(new NodeFS(), {
-  detachTemp(p) {
-    tmpdirs.delete(p);
-  },
-
-  mktempSync(cb) {
-    registerCleanExit();
-
-    while (true) {
-      const p = getTempName(`xfs-`);
-
-      try {
-        this.mkdirSync(p);
-      } catch (error) {
-        if (error.code === `EEXIST`) {
-          continue;
-        } else {
-          throw error;
-        }
-      }
-
-      const realP = this.realpathSync(p);
-      tmpdirs.add(realP);
-
-      if (typeof cb !== `undefined`) {
-        try {
-          return cb(realP);
-        } finally {
-          if (tmpdirs.has(realP)) {
-            tmpdirs.delete(realP);
-
-            try {
-              this.removeSync(realP);
-            } catch (_a) {// Too bad if there's an error
-            }
-          }
-        }
-      } else {
-        return p;
-      }
-    }
-  },
-
-  async mktempPromise(cb) {
-    registerCleanExit();
-
-    while (true) {
-      const p = getTempName(`xfs-`);
-
-      try {
-        await this.mkdirPromise(p);
-      } catch (error) {
-        if (error.code === `EEXIST`) {
-          continue;
-        } else {
-          throw error;
-        }
-      }
-
-      const realP = await this.realpathPromise(p);
-      tmpdirs.add(realP);
-
-      if (typeof cb !== `undefined`) {
-        try {
-          return await cb(realP);
-        } finally {
-          if (tmpdirs.has(realP)) {
-            tmpdirs.delete(realP);
-
-            try {
-              await this.removePromise(realP);
-            } catch (_a) {// Too bad if there's an error
-            }
-          }
-        }
-      } else {
-        return realP;
-      }
-    }
-  },
-
-  async rmtempPromise() {
-    await Promise.all(Array.from(tmpdirs.values()).map(async p => {
-      try {
-        await xfs.removePromise(p, {
-          maxRetries: 0
-        });
-        tmpdirs.delete(p);
-      } catch (_a) {// Too bad if there's an error
-      }
-    }));
-  },
-
-  rmtempSync() {
-    for (const p of tmpdirs) {
-      try {
-        xfs.removeSync(p);
-        tmpdirs.delete(p);
-      } catch (_a) {// Too bad if there's an error
-      }
-    }
-  }
-
-});
 // CONCATENATED MODULE: ../yarnpkg-fslib/sources/PosixFS.ts
 
 
